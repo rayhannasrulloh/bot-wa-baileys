@@ -9,7 +9,9 @@ const {
 
 const pino = require("pino");
 const { Boom } = require("@hapi/boom");
+const qrcode = require("qrcode-terminal"); // <-- TAMBAHKAN BARIS INI
 
+// Fungsi utama untuk menjalankan bot
 async function connectToWhatsApp() {
     // Menyimpan state otentikasi agar tidak perlu scan QR berulang kali
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
@@ -18,13 +20,20 @@ async function connectToWhatsApp() {
     const sock = makeWASocket({
         // Gunakan logger pino untuk menampilkan log
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true, // Menampilkan QR code di terminal
-        auth: state, // Menggunakan state otentikasi yang sudah disimpan
+        // printQRInTerminal: true, // <-- HAPUS ATAU BERI KOMENTAR BARIS INI
+        auth: state,
     });
 
     // Event listener saat koneksi berhasil/gagal/ditutup
     sock.ev.on('connection.update', (update) => {
+        // Ambil qr, connection, dan lastDisconnect dari update
         const { connection, lastDisconnect, qr } = update;
+
+        // Jika ada QR, tampilkan di terminal
+        if (qr) {
+            console.log("Pindai kode QR ini untuk terhubung:");
+            qrcode.generate(qr, { small: true });
+        }
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -41,19 +50,12 @@ async function connectToWhatsApp() {
     // Simpan kredensial setiap kali diperbarui
     sock.ev.on('creds.update', saveCreds);
 
-
     // Event listener saat ada pesan masuk
     sock.ev.on('messages.upsert', async m => {
-        // Mengambil pesan yang relevan
         const msg = m.messages[0];
-
-        // Jika tidak ada pesan atau bukan dari pengguna, abaikan
         if (!msg.message || msg.key.fromMe) return;
-
-        // Mendapatkan nomor pengirim
         const from = msg.key.remoteJid;
 
-        // Mengirim balasan "Halo!" ke pengirim
         try {
             console.log('Menerima pesan dari:', from);
             await sock.sendMessage(from, { text: 'Halo!' });
