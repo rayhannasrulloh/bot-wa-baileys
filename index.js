@@ -9,27 +9,20 @@ const {
 
 const pino = require("pino");
 const { Boom } = require("@hapi/boom");
-const qrcode = require("qrcode-terminal"); // <-- TAMBAHKAN BARIS INI
+const qrcode = require("qrcode-terminal");
 
 // Fungsi utama untuk menjalankan bot
 async function connectToWhatsApp() {
-    // Menyimpan state otentikasi agar tidak perlu scan QR berulang kali
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
-    // Membuat koneksi ke WhatsApp
     const sock = makeWASocket({
-        // Gunakan logger pino untuk menampilkan log
         logger: pino({ level: 'silent' }),
-        // printQRInTerminal: true, // <-- HAPUS ATAU BERI KOMENTAR BARIS INI
         auth: state,
     });
 
-    // Event listener saat koneksi berhasil/gagal/ditutup
     sock.ev.on('connection.update', (update) => {
-        // Ambil qr, connection, dan lastDisconnect dari update
         const { connection, lastDisconnect, qr } = update;
 
-        // Jika ada QR, tampilkan di terminal
         if (qr) {
             console.log("Pindai kode QR ini untuk terhubung:");
             qrcode.generate(qr, { small: true });
@@ -38,7 +31,6 @@ async function connectToWhatsApp() {
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('Koneksi ditutup karena ', lastDisconnect.error, ', mencoba menghubungkan kembali...', shouldReconnect);
-            // Jika bukan karena logout, coba sambungkan kembali
             if (shouldReconnect) {
                 connectToWhatsApp();
             }
@@ -47,23 +39,41 @@ async function connectToWhatsApp() {
         }
     });
 
-    // Simpan kredensial setiap kali diperbarui
     sock.ev.on('creds.update', saveCreds);
 
-    // Event listener saat ada pesan masuk
+
+    // ==================================================
+    //           BAGIAN LOGIKA PERINTAH DIMULAI
+    // ==================================================
     sock.ev.on('messages.upsert', async m => {
+        // Mengambil data pesan yang relevan
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
-        const from = msg.key.remoteJid;
 
-        try {
-            console.log('Menerima pesan dari:', from);
-            await sock.sendMessage(from, { text: 'Halo!' });
-            console.log('Berhasil membalas pesan ke:', from);
-        } catch (error) {
-            console.error('Gagal mengirim balasan:', error);
+        // Mendapatkan nomor pengirim dan teks pesan
+        const from = msg.key.remoteJid;
+        // Memastikan message.conversation tidak null, jika null gunakan extendedTextMessage
+        const messageText = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+        // Jika tidak ada teks pesan, abaikan
+        if (!messageText) return;
+
+        console.log(`Menerima pesan "${messageText}" dari ${from}`);
+
+        // --- Logika untuk memproses perintah ---
+        if (messageText.toLowerCase() === '!ping') {
+            await sock.sendMessage(from, { text: 'Pong!' }, { quoted: msg });
+            console.log(`Membalas "Pong!" ke ${from}`);
         }
+        else if (messageText.toLowerCase() === '!halo') {
+            await sock.sendMessage(from, { text: 'Halo juga!' }, { quoted: msg });
+            console.log(`Membalas "Halo juga!" ke ${from}`);
+        }
+        // Anda bisa menambahkan 'else if' lain di sini untuk perintah baru
     });
+    // ==================================================
+    //            BAGIAN LOGIKA PERINTAH SELESAI
+    // ==================================================
 }
 
 // Menjalankan bot
