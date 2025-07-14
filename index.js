@@ -5,7 +5,8 @@ const {
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const { Boom } = require("@hapi/boom");
-const fs = require('fs'); // <-- Diperlukan untuk interaksi file
+const qrcode = require("qrcode-terminal");
+const fs = require('fs');
 
 // ==================================================
 //      BAGIAN PENGELOLAAN DATABASE PENGGUNA
@@ -46,11 +47,25 @@ async function connectToWhatsApp() {
 
     const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
+        printQRInTerminal: true,
         auth: state,
     });
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        /* if (update.pairingCode) {
+            console.log(`\n\n==========================`);
+            console.log(`Kode Pairing: ${update.pairingCode}`);
+            console.log('==========================\n');
+            console.log("Buka WhatsApp di HP anda > Pengaturan > Perangkat Tertaut > Tautkan dengan nomor telepon > Masukkan kode di atas");
+        } */
+
+        if (qr) {
+            console.log("Pindai kode QR ini untuk terhubung:");
+            qrcode.generate(qr, { small: true });
+        }
+
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('Koneksi ditutup karena ', lastDisconnect.error, ', mencoba menghubungkan kembali...', shouldReconnect);
@@ -58,7 +73,7 @@ async function connectToWhatsApp() {
                 connectToWhatsApp();
             }
         } else if (connection === 'open') {
-            console.log('Koneksi berhasil tersambung!');
+            console.log('Koneksi berhasil tersambung [✓]');
         }
     });
 
